@@ -142,7 +142,8 @@ def process_video(video_file):
 
     # ================= VIDEO =================
     h,w,_ = frames[0].shape
-    out = cv2.VideoWriter("output.avi", cv2.VideoWriter_fourcc(*'XVID'), fps,(w,h))
+    video_path = "output.avi"
+    out = cv2.VideoWriter(video_path, cv2.VideoWriter_fourcc(*'XVID'), fps,(w,h))
 
     for f in frames:
         cv2.putText(f,f"Speed:{speed:.1f}",(20,30),0,0.6,(255,255,255),2)
@@ -155,15 +156,16 @@ def process_video(video_file):
     out.release()
 
     # ================= EXCEL =================
+    excel_path = "result.xlsx"
     df = pd.DataFrame([{
         "RunSpeed":run,"BallSpeed":speed,"Type":bowl_type,
         "Performance":performance,"Risk":injury,"Confidence":confidence,
         "Arm":arm,"Brace":knee,"Rhythm":rhythm,"Jump":jump,
         "Action":action,"Release":release,"Tips":tips
     }])
-    df.to_excel("result.xlsx", index=False)
+    df.to_excel(excel_path, index=False)
 
-    return "output.avi","result.xlsx",action,release,tips
+    return video_path, excel_path, action, release, tips
 
 # ================= UI =================
 st.title("🏏 Cricket Bowling Analysis AI")
@@ -173,6 +175,7 @@ uploaded_file = st.file_uploader("Upload Video", type=["mp4","avi"])
 if uploaded_file:
     try:
         st.write("Processing... ⏳")
+
         tfile = tempfile.NamedTemporaryFile(delete=False)
         tfile.write(uploaded_file.read())
 
@@ -180,11 +183,23 @@ if uploaded_file:
 
         if result:
             video_path, excel_path, action, release, tips = result
-            st.success("✅ Done")
+
+            st.success("✅ Analysis Complete!")
+
             st.video(video_path)
+
+            st.subheader("🎯 Key Insights")
             st.write("Action:", action)
             st.write("Release:", release)
             st.write("Tips:", tips)
+
+            # DOWNLOAD BUTTONS
+            with open(video_path, "rb") as f:
+                st.download_button("⬇️ Download Video", f, file_name="result.avi")
+
+            with open(excel_path, "rb") as f:
+                st.download_button("⬇️ Download Excel", f, file_name="result.xlsx")
+
         else:
             st.error("❌ Failed to process video")
 
