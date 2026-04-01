@@ -144,19 +144,48 @@ def process_video(video_file):
     if run<15: tips.append("Increase run-up")
     tips = " | ".join(tips) if tips else "Excellent"
 
-    # ===== VIDEO =====
+    # ===== VIDEO OUTPUT (FULL) =====
     h,w,_ = frames[0].shape
-    video_path = "result.avi"
-    out = cv2.VideoWriter(video_path, cv2.VideoWriter_fourcc(*'XVID'), fps,(w,h))
+    video_path = "FINAL_VIDEO_FULL.avi"
+
+    out = cv2.VideoWriter(video_path,
+                          cv2.VideoWriter_fourcc(*'XVID'),
+                          fps,
+                          (w,h))
 
     for i,f in enumerate(frames):
+
         if i < len(series):
             f = draw_skeleton(f, series[i])
 
-        cv2.putText(f,f"Speed:{speed:.1f}",(20,30),0,0.6,(255,255,255),2)
-        cv2.putText(f,f"Score:{performance}",(20,60),0,0.6,(255,255,255),2)
-        cv2.putText(f,"Action:"+action,(20,h-70),0,0.6,(255,255,0),2)
-        cv2.putText(f,"Tips:"+tips,(20,h-20),0,0.5,(0,255,0),2)
+        # LEFT SIDE
+        y = 30
+        for txt in [
+            f"Run:{run:.1f}",
+            f"Speed:{speed:.1f}",
+            f"Type:{bowl_type}",
+            f"Score:{performance}",
+            f"Risk:{injury}",
+            f"Confidence:{confidence}%"
+        ]:
+            cv2.putText(f, txt, (20, y), 0, 0.6, (255,255,255), 2)
+            y += 25
+
+        # RIGHT SIDE
+        y = 30
+        for txt in [
+            f"Arm:{arm:.2f}",
+            f"Brace:{knee:.1f}",
+            f"Rhythm:{rhythm:.2f}",
+            f"Jump:{jump:.2f}"
+        ]:
+            cv2.putText(f, txt, (w-260, y), 0, 0.6, (200,200,200), 2)
+            y += 25
+
+        # BOTTOM
+        cv2.putText(f, "Action:"+action, (20, h-70), 0, 0.6, (255,255,0), 2)
+        cv2.putText(f, "Release:"+release, (20, h-45), 0, 0.6, (255,255,0), 2)
+        cv2.putText(f, "Tips:"+tips, (20, h-15), 0, 0.5, (0,255,0), 2)
 
         out.write(f)
 
@@ -200,14 +229,17 @@ if uploaded_file:
             st.write("Tips:", tips)
 
             with open(video_path, "rb") as f:
-                st.download_button("⬇️ Download Video", f, file_name="result.avi", mime="video/x-msvideo")
+                st.download_button("⬇️ Download Video", f,
+                                   file_name="FINAL_VIDEO_FULL.avi",
+                                   mime="video/x-msvideo")
 
             with open(excel_path, "rb") as f:
-                st.download_button("⬇️ Download Excel", f, file_name="result.xlsx",
+                st.download_button("⬇️ Download Excel", f,
+                                   file_name="result.xlsx",
                                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
 
         else:
             st.error("❌ Failed to process video")
 
     except Exception as e:
-        st.error(f"Error: {e}") 
+        st.error(f"Error: {e}")
