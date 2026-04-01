@@ -16,23 +16,23 @@ movenet = load_model()
 
 # ================= POSE =================
 def detect_pose(frame):
-    h, w, _ = frame.shape
-    img = cv2.resize(frame, (192, 192))
-    rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-    input_img = np.expand_dims(rgb, axis=0)
-    input_img = tf.cast(input_img, dtype=tf.int32)
+    h,w,_ = frame.shape
+    img = cv2.resize(frame,(192,192))
+    rgb = cv2.cvtColor(img,cv2.COLOR_BGR2RGB)
+    input_img = np.expand_dims(rgb,axis=0)
+    input_img = tf.cast(input_img,dtype=tf.int32)
 
     outputs = movenet(input_img)
     kps = outputs['output_0'].numpy()[0][0]
 
     pts = []
     for kp in kps:
-        y = int(kp[0] * h)
-        x = int(kp[1] * w)
-        pts.append((x, y) if kp[2] > 0.4 else None)
+        y = int(kp[0]*h)
+        x = int(kp[1]*w)
+        pts.append((x,y) if kp[2]>0.4 else None)
     return pts
 
-# ================= SKELETON =================
+# ================= DRAW =================
 def draw_skeleton(frame, points):
     edges = [
         (0,1),(0,2),(1,3),(2,4),
@@ -60,15 +60,16 @@ def angle(a,b,c):
 
 # ================= PROCESS =================
 def process_video(video_file):
-    cap = cv2.VideoCapture(video_file)
 
+    cap = cv2.VideoCapture(video_file)
     if not cap.isOpened():
         return None
 
     fps = cap.get(cv2.CAP_PROP_FPS) or 25
     w = int(cap.get(3))
 
-    series, frames = [], []
+    series = []
+    frames = []
 
     while True:
         ret, frame = cap.read()
@@ -77,7 +78,6 @@ def process_video(video_file):
 
         pts = detect_pose(frame)
         series.append(pts)
-        frame = draw_skeleton(frame, pts)
         frames.append(frame)
 
     cap.release()
@@ -85,33 +85,32 @@ def process_video(video_file):
     if len(frames) == 0:
         return None
 
-    # ================= METRICS =================
-    hip = [p[11][0] for p in series if p and len(p)>11 and p[11]]
+    # ===== METRICS =====
+    hip = [p[11][0] for p in series if p and p[11]]
     disp = np.mean(np.abs(np.diff(hip))) if len(hip)>2 else 0
 
-    run = max(10, min((disp/w)*fps*50, 30))
-    speed = max(90, min(run*2.8+60, 150))
+    run = max(10,min((disp/w)*fps*50,30))
+    speed = max(90,min(run*2.8+60,150))
 
     arm = np.mean([abs(series[i][9][0]-series[i-1][9][0])
                    for i in range(1,len(series))
                    if series[i][9] and series[i-1][9]] or [0])
 
     knee = np.mean([angle(p[11],p[13],p[15])
-                    for p in series
-                    if p and len(p)>15 and p[11] and p[13] and p[15]] or [0])
+                    for p in series if p and p[11] and p[13] and p[15]] or [0])
 
     rhythm = np.std(np.diff(hip)) if len(hip)>2 else 0
-    ankle = [p[15][1] for p in series if p and len(p)>15 and p[15]]
-    jump = (max(ankle)-min(ankle))/200 if ankle else 0
+
+    ankle = [p[15][1] for p in series if p and p[15]]
+    jump = (max(ankle)-min(ankle)/200) if ankle else 0
 
     # ACTION
-    elbow = [angle(p[5],p[7],p[9])
-             for p in series if p and len(p)>9 and p[5] and p[7] and p[9]]
+    elbow = [angle(p[5],p[7],p[9]) for p in series if p and p[5] and p[7] and p[9]]
     elbow = np.mean(elbow) if elbow else 0
     action = "Fair" if elbow>150 else "Moderate" if elbow>130 else "Suspect"
 
     # RELEASE
-    wrist = [p[9][0] if p and len(p)>9 and p[9] else 0 for p in series]
+    wrist = [p[9][0] if p and p[9] else 0 for p in series]
     release_idx = np.argmax(np.diff(wrist)) if len(wrist)>2 else 0
 
     try:
@@ -121,8 +120,10 @@ def process_video(video_file):
     except:
         release = "Front"
 
-    # TYPE & SCORE
+    # TYPE
     bowl_type = "Fast" if speed>130 else "Medium" if speed>115 else "Slow"
+
+    # SCORE
     score = min(run*2,25)+min(jump*50,20)+min(arm*2,20)
     score += 15 if release=="Front" else 5
     score += 20 if action=="Fair" else 5
@@ -138,32 +139,60 @@ def process_video(video_file):
     if jump<0.3: tips.append("Improve jump")
     if knee<30: tips.append("Strong front leg")
     if run<15: tips.append("Increase run-up")
+
     tips = " | ".join(tips) if tips else "Excellent"
 
-    # ================= VIDEO =================
+    # ===== VIDEO OUTPUT =====
     h,w,_ = frames[0].shape
-    video_path = "output.avi"
+    video_path = "FINAL_VIDEO_FULL.avi"
     out = cv2.VideoWriter(video_path, cv2.VideoWriter_fourcc(*'XVID'), fps,(w,h))
 
-    for f in frames:
-        cv2.putText(f,f"Speed:{speed:.1f}",(20,30),0,0.6,(255,255,255),2)
-        cv2.putText(f,f"Type:{bowl_type}",(20,60),0,0.6,(255,255,255),2)
-        cv2.putText(f,f"Score:{performance}",(20,90),0,0.6,(255,255,255),2)
+    for i,f in enumerate(frames):
+
+        if i < len(series):
+            f = draw_skeleton(f, series[i])
+
+        y = 30
+        for txt in [
+            f"Run:{run:.1f}",
+            f"Speed:{speed:.1f}",
+            f"Type:{bowl_type}",
+            f"Score:{performance}",
+            f"Risk:{injury}",
+            f"Confidence:{confidence}%"
+        ]:
+            cv2.putText(f,txt,(20,y),0,0.6,(255,255,255),2)
+            y += 25
+
+        y = 30
+        for txt in [
+            f"Arm:{arm:.2f}",
+            f"Brace:{knee:.1f}",
+            f"Rhythm:{rhythm:.2f}",
+            f"Jump:{jump:.2f}"
+        ]:
+            cv2.putText(f,txt,(w-250,y),0,0.6,(200,200,200),2)
+            y += 25
+
         cv2.putText(f,"Action:"+action,(20,h-70),0,0.6,(255,255,0),2)
-        cv2.putText(f,"Tips:"+tips,(20,h-20),0,0.5,(0,255,0),2)
+        cv2.putText(f,"Release:"+release,(20,h-45),0,0.6,(255,255,0),2)
+        cv2.putText(f,"Tips:"+tips,(20,h-15),0,0.5,(0,255,0),2)
+
         out.write(f)
 
     out.release()
 
-    # ================= EXCEL =================
-    excel_path = "result.xlsx"
+    # ===== EXCEL =====
+    excel_path = "final_dataset.xlsx"
+
     df = pd.DataFrame([{
         "RunSpeed":run,"BallSpeed":speed,"Type":bowl_type,
         "Performance":performance,"Risk":injury,"Confidence":confidence,
         "Arm":arm,"Brace":knee,"Rhythm":rhythm,"Jump":jump,
         "Action":action,"Release":release,"Tips":tips
     }])
-    df.to_excel(excel_path, index=False)
+
+    df.to_excel(excel_path,index=False)
 
     return video_path, excel_path, action, release, tips
 
@@ -193,12 +222,11 @@ if uploaded_file:
             st.write("Release:", release)
             st.write("Tips:", tips)
 
-            # DOWNLOAD BUTTONS
             with open(video_path, "rb") as f:
-                st.download_button("⬇️ Download Video", f, file_name="result.avi")
+                st.download_button("⬇️ Download Video", f)
 
             with open(excel_path, "rb") as f:
-                st.download_button("⬇️ Download Excel", f, file_name="result.xlsx")
+                st.download_button("⬇️ Download Excel", f)
 
         else:
             st.error("❌ Failed to process video")
